@@ -519,7 +519,7 @@ function App() {
 
       <footer className="app-footer">
         <a href="https://github.com/shangtianqiang/prompt-helper-extension" target="_blank" rel="noreferrer">
-          项目来源：GitHub
+          项目来源：prompt-helper-extension
         </a>
       </footer>
 
