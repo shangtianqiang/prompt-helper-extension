@@ -55,11 +55,11 @@ function fileToPromptImage(file: File): Promise<PromptImage> {
 }
 
 function normalizeData(data: Partial<DemoData>): DemoData {
-  return seedDefaultCategories({
+  return {
     categories: Array.isArray(data.categories) ? data.categories : [],
     tags: Array.isArray(data.tags) ? data.tags : [],
     prompts: Array.isArray(data.prompts) ? data.prompts : []
-  });
+  };
 }
 
 function isExportWrapper(value: unknown): value is { data: Partial<DemoData> } {
@@ -353,6 +353,86 @@ function App() {
     loadData();
   }
 
+  function renameCategory(category: Category) {
+    const next = window.prompt("重命名分类", category.name)?.trim();
+    if (!next || next === category.name) return;
+
+    const current = readLocalData();
+    if (current.categories.some((item) => item.id !== category.id && item.name.toLowerCase() === next.toLowerCase())) {
+      window.alert("已存在同名分类。");
+      return;
+    }
+
+    writeLocalData({
+      ...current,
+      categories: current.categories.map((item) => (item.id === category.id ? { ...item, name: next } : item)),
+      prompts: current.prompts.map((item) =>
+        item.category_id === category.id && item.categories ? { ...item, categories: { ...item.categories, name: next } } : item
+      )
+    });
+    loadData();
+  }
+
+  function deleteCategory(category: Category) {
+    const count = prompts.filter((item) => item.category_id === category.id).length;
+    const suffix = count > 0 ? `${count} 条提示词将变为未分类。` : "";
+    const ok = window.confirm(`确定删除分类「${category.name}」吗？${suffix}`);
+    if (!ok) return;
+
+    const current = readLocalData();
+    writeLocalData({
+      ...current,
+      categories: current.categories.filter((item) => item.id !== category.id),
+      prompts: current.prompts.map((item) =>
+        item.category_id === category.id ? { ...item, category_id: null, categories: null } : item
+      )
+    });
+    if (categoryFilter === category.id) setCategoryFilter("");
+    loadData();
+  }
+
+  function renameTag(tag: Tag) {
+    const next = window.prompt("重命名标签", tag.name)?.trim();
+    if (!next || next === tag.name) return;
+
+    const current = readLocalData();
+    if (current.tags.some((item) => item.id !== tag.id && item.name.toLowerCase() === next.toLowerCase())) {
+      window.alert("已存在同名标签。");
+      return;
+    }
+
+    writeLocalData({
+      ...current,
+      tags: current.tags.map((item) => (item.id === tag.id ? { ...item, name: next } : item)),
+      prompts: current.prompts.map((item) => ({
+        ...item,
+        prompt_tags: item.prompt_tags.map((row) =>
+          row.tag_id === tag.id && row.tags ? { ...row, tags: { ...row.tags, name: next } } : row
+        )
+      }))
+    });
+    loadData();
+  }
+
+  function deleteTag(tag: Tag) {
+    const count = prompts.filter((item) => item.prompt_tags.some((row) => row.tag_id === tag.id)).length;
+    const suffix = count > 0 ? `${count} 条提示词将移除该标签。` : "";
+    const ok = window.confirm(`确定删除标签「${tag.name}」吗？${suffix}`);
+    if (!ok) return;
+
+    const current = readLocalData();
+    writeLocalData({
+      ...current,
+      tags: current.tags.filter((item) => item.id !== tag.id),
+      prompts: current.prompts.map((item) => ({
+        ...item,
+        prompt_tags: item.prompt_tags.filter((row) => row.tag_id !== tag.id)
+      }))
+    });
+    if (tagFilter === tag.id) setTagFilter("");
+    loadData();
+  }
+
   async function copyPrompt(prompt: Prompt) {
     setCopyState(null);
     try {
@@ -625,6 +705,68 @@ function App() {
                 <Download size={16} />
                 导出全部 JSON
               </button>
+              <div className="manage-section">
+                <h3>分类管理</h3>
+                {categories.length === 0 ? (
+                  <p className="manage-empty">暂无分类</p>
+                ) : (
+                  <ul className="manage-list">
+                    {categories.map((category) => (
+                      <li key={category.id}>
+                        <span>{category.name}</span>
+                        <div className="manage-actions">
+                          <button
+                            className="icon-button small"
+                            onClick={() => renameCategory(category)}
+                            title="重命名"
+                            aria-label={`重命名分类：${category.name}`}
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            className="icon-button small danger"
+                            onClick={() => deleteCategory(category)}
+                            title="删除"
+                            aria-label={`删除分类：${category.name}`}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <h3>标签管理</h3>
+                {tags.length === 0 ? (
+                  <p className="manage-empty">暂无标签</p>
+                ) : (
+                  <ul className="manage-list">
+                    {tags.map((tag) => (
+                      <li key={tag.id}>
+                        <span>{tag.name}</span>
+                        <div className="manage-actions">
+                          <button
+                            className="icon-button small"
+                            onClick={() => renameTag(tag)}
+                            title="重命名"
+                            aria-label={`重命名标签：${tag.name}`}
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            className="icon-button small danger"
+                            onClick={() => deleteTag(tag)}
+                            title="删除"
+                            aria-label={`删除标签：${tag.name}`}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           </section>
         </div>

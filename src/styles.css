@@ -585,6 +585,70 @@ textarea:focus {
   line-height: 1.5;
 }
 
+.manage-section {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid #e5e5e5;
+}
+
+.manage-section h3 {
+  margin: 0;
+  color: #404040;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.manage-empty {
+  margin: 0;
+  color: #8c8c8c;
+  font-size: 12px;
+}
+
+.manage-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.manage-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  padding: 2px 2px 2px 10px;
+  border: 1px solid #e5e5e5;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.manage-list li > span {
+  min-width: 0;
+  color: #262626;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manage-actions {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.icon-button.small {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
 .divider {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
