@@ -332,6 +332,22 @@ function App() {
         prompts: nextPrompts
       });
 
+      // 放宽不匹配的筛选，确保刚保存的提示词在列表里可见
+      if (categoryFilter && prompt.category_id !== categoryFilter) {
+        setCategoryFilter("");
+      }
+      if (tagFilter && !prompt.prompt_tags.some((row) => row.tag_id === tagFilter)) {
+        setTagFilter("");
+      }
+      const normalizedQuery = query.trim().toLowerCase();
+      if (
+        normalizedQuery &&
+        !prompt.title.toLowerCase().includes(normalizedQuery) &&
+        !prompt.content.toLowerCase().includes(normalizedQuery)
+      ) {
+        setQuery("");
+      }
+
       setIsEditorOpen(false);
       loadData();
     } catch (caught) {
