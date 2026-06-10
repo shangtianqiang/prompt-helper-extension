@@ -176,11 +176,13 @@ function App() {
   function openCreateEditor() {
     setEditingPrompt(null);
     setForm(emptyForm);
+    setError("");
     setIsEditorOpen(true);
   }
 
   function openEditEditor(prompt: Prompt) {
     setEditingPrompt(prompt);
+    setError("");
     setForm({
       title: prompt.title,
       content: prompt.content,
@@ -333,7 +335,11 @@ function App() {
       setIsEditorOpen(false);
       loadData();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "保存失败，请稍后重试。");
+      if (caught instanceof DOMException && (caught.name === "QuotaExceededError" || caught.code === 22)) {
+        setError("存储空间不足：本地存储约有 5MB 上限，图片占用最大。请删除部分带图提示词或压缩图片后重试。");
+      } else {
+        setError(caught instanceof Error ? caught.message : "保存失败，请稍后重试。");
+      }
     } finally {
       setSaving(false);
     }
@@ -673,6 +679,7 @@ function App() {
                   ))}
                 </div>
               ) : null}
+              {error ? <p className="error-text">{error}</p> : null}
               <div className="modal-actions">
                 <button type="button" className="secondary-button" onClick={() => setIsEditorOpen(false)}>
                   取消
