@@ -25,6 +25,7 @@
     "service_worker": "background.js"
   },
   "permissions": ["storage", "clipboardWrite", "sidePanel"],
+  "host_permissions": ["https://base-api.feishu.cn/*"],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
   }

@@ -2,6 +2,15 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { Check, Copy, Download, Edit2, Expand, ImagePlus, Plus, Search, Settings, Trash2, Upload, X } from "lucide-react";
 import type { Category, Prompt, PromptFormState, PromptImage, Tag } from "./types";
+import {
+  deletePromptRecord,
+  loadFeishuConfig,
+  parseBaseUrl,
+  saveFeishuConfig,
+  syncPromptsToFeishu,
+  upsertPromptRecord,
+  type FeishuConfig
+} from "./feishu";
 import "./styles.css";
 
 const emptyForm: PromptFormState = {
@@ -132,9 +141,20 @@ function App() {
   const [previewImage, setPreviewImage] = React.useState<PromptImage | null>(null);
   const [form, setForm] = React.useState<PromptFormState>(emptyForm);
   const [saving, setSaving] = React.useState(false);
+  const [feishuConfig, setFeishuConfig] = React.useState<FeishuConfig | null>(null);
+  const [feishuUrlInput, setFeishuUrlInput] = React.useState("");
+  const [feishuTokenInput, setFeishuTokenInput] = React.useState("");
+  const [feishuStatus, setFeishuStatus] = React.useState("");
+  const [feishuSyncing, setFeishuSyncing] = React.useState(false);
 
   React.useEffect(() => {
     loadData();
+    void loadFeishuConfig().then((config) => {
+      if (!config) return;
+      setFeishuConfig(config);
+      setFeishuUrlInput(config.sourceUrl);
+      setFeishuTokenInput(config.personalToken);
+    });
   }, []);
 
   React.useEffect(() => {
@@ -348,6 +368,7 @@ function App() {
         setQuery("");
       }
 
+      syncOneToFeishu(prompt);
       setIsEditorOpen(false);
       loadData();
     } catch (caught) {
@@ -372,6 +393,7 @@ function App() {
       ...current,
       prompts: current.prompts.filter((item) => item.id !== prompt.id)
     });
+    removeFromFeishu(prompt.id);
     loadData();
   }
 
@@ -385,13 +407,15 @@ function App() {
       return;
     }
 
+    const nextPrompts = current.prompts.map((item) =>
+      item.category_id === category.id && item.categories ? { ...item, categories: { ...item.categories, name: next } } : item
+    );
     writeLocalData({
       ...current,
       categories: current.categories.map((item) => (item.id === category.id ? { ...item, name: next } : item)),
-      prompts: current.prompts.map((item) =>
-        item.category_id === category.id && item.categories ? { ...item, categories: { ...item.categories, name: next } } : item
-      )
+      prompts: nextPrompts
     });
+    syncManyToFeishu(nextPrompts.filter((item) => item.category_id === category.id));
     loadData();
   }
 
@@ -402,13 +426,18 @@ function App() {
     if (!ok) return;
 
     const current = readLocalData();
+    const affectedIds = new Set(
+      current.prompts.filter((item) => item.category_id === category.id).map((item) => item.id)
+    );
+    const nextPrompts = current.prompts.map((item) =>
+      item.category_id === category.id ? { ...item, category_id: null, categories: null } : item
+    );
     writeLocalData({
       ...current,
       categories: current.categories.filter((item) => item.id !== category.id),
-      prompts: current.prompts.map((item) =>
-        item.category_id === category.id ? { ...item, category_id: null, categories: null } : item
-      )
+      prompts: nextPrompts
     });
+    syncManyToFeishu(nextPrompts.filter((item) => affectedIds.has(item.id)));
     if (categoryFilter === category.id) setCategoryFilter("");
     loadData();
   }
@@ -423,16 +452,18 @@ function App() {
       return;
     }
 
+    const nextPrompts = current.prompts.map((item) => ({
+      ...item,
+      prompt_tags: item.prompt_tags.map((row) =>
+        row.tag_id === tag.id && row.tags ? { ...row, tags: { ...row.tags, name: next } } : row
+      )
+    }));
     writeLocalData({
       ...current,
       tags: current.tags.map((item) => (item.id === tag.id ? { ...item, name: next } : item)),
-      prompts: current.prompts.map((item) => ({
-        ...item,
-        prompt_tags: item.prompt_tags.map((row) =>
-          row.tag_id === tag.id && row.tags ? { ...row, tags: { ...row.tags, name: next } } : row
-        )
-      }))
+      prompts: nextPrompts
     });
+    syncManyToFeishu(nextPrompts.filter((item) => item.prompt_tags.some((row) => row.tag_id === tag.id)));
     loadData();
   }
 
@@ -443,16 +474,82 @@ function App() {
     if (!ok) return;
 
     const current = readLocalData();
+    const affectedIds = new Set(
+      current.prompts.filter((item) => item.prompt_tags.some((row) => row.tag_id === tag.id)).map((item) => item.id)
+    );
+    const nextPrompts = current.prompts.map((item) => ({
+      ...item,
+      prompt_tags: item.prompt_tags.filter((row) => row.tag_id !== tag.id)
+    }));
     writeLocalData({
       ...current,
       tags: current.tags.filter((item) => item.id !== tag.id),
-      prompts: current.prompts.map((item) => ({
-        ...item,
-        prompt_tags: item.prompt_tags.filter((row) => row.tag_id !== tag.id)
-      }))
+      prompts: nextPrompts
     });
+    syncManyToFeishu(nextPrompts.filter((item) => affectedIds.has(item.id)));
     if (tagFilter === tag.id) setTagFilter("");
     loadData();
+  }
+
+  function syncOneToFeishu(prompt: Prompt) {
+    if (!feishuConfig) return;
+    void upsertPromptRecord(feishuConfig, prompt).catch((caught: unknown) => {
+      setError(`已保存到本地，但同步到飞书失败：${caught instanceof Error ? caught.message : String(caught)}`);
+    });
+  }
+
+  function syncManyToFeishu(promptsToSync: Prompt[]) {
+    if (!feishuConfig || promptsToSync.length === 0) return;
+    void syncPromptsToFeishu(feishuConfig, promptsToSync).catch((caught: unknown) => {
+      setError(`本地已更新，但同步到飞书失败：${caught instanceof Error ? caught.message : String(caught)}`);
+    });
+  }
+
+  function removeFromFeishu(promptId: string) {
+    if (!feishuConfig) return;
+    void deletePromptRecord(feishuConfig, promptId).catch((caught: unknown) => {
+      setError(`本地已删除，但同步到飞书失败：${caught instanceof Error ? caught.message : String(caught)}`);
+    });
+  }
+
+  async function handleSaveFeishuConfig() {
+    const parsed = parseBaseUrl(feishuUrlInput);
+    if (!parsed) {
+      setFeishuStatus("链接格式不对，应形如 https://xx.feishu.cn/base/xxxx?table=tblxxxx");
+      return;
+    }
+    if (!feishuTokenInput.trim()) {
+      setFeishuStatus("请填写授权码（pt- 开头）。");
+      return;
+    }
+
+    const config: FeishuConfig = {
+      ...parsed,
+      personalToken: feishuTokenInput.trim(),
+      sourceUrl: feishuUrlInput.trim()
+    };
+    await saveFeishuConfig(config);
+    setFeishuConfig(config);
+    setFeishuStatus("配置已保存，之后保存/删除提示词会自动同步到飞书。");
+  }
+
+  async function handleFeishuFullSync() {
+    if (!feishuConfig) {
+      setFeishuStatus("请先保存飞书配置。");
+      return;
+    }
+
+    setFeishuSyncing(true);
+    setFeishuStatus("同步中…");
+    try {
+      const data = readLocalData();
+      await syncPromptsToFeishu(feishuConfig, data.prompts);
+      setFeishuStatus(`已同步 ${data.prompts.length} 条提示词到飞书表格。`);
+    } catch (caught) {
+      setFeishuStatus(`同步失败：${caught instanceof Error ? caught.message : String(caught)}`);
+    } finally {
+      setFeishuSyncing(false);
+    }
   }
 
   async function copyPrompt(prompt: Prompt) {
@@ -728,6 +825,41 @@ function App() {
                 <Download size={16} />
                 导出全部 JSON
               </button>
+              <div className="manage-section">
+                <h3>飞书多维表格同步</h3>
+                <p>配置后，保存/删除提示词会自动同步到飞书表格留存（图片仅同步数量）。</p>
+                <label>
+                  表格链接
+                  <input
+                    value={feishuUrlInput}
+                    onChange={(event) => setFeishuUrlInput(event.target.value)}
+                    placeholder="https://xx.feishu.cn/base/xxxx?table=tblxxxx"
+                  />
+                </label>
+                <label>
+                  授权码
+                  <input
+                    type="password"
+                    value={feishuTokenInput}
+                    onChange={(event) => setFeishuTokenInput(event.target.value)}
+                    placeholder="pt-..."
+                  />
+                </label>
+                <div className="modal-actions">
+                  <button className="secondary-button" type="button" onClick={() => void handleSaveFeishuConfig()}>
+                    保存配置
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => void handleFeishuFullSync()}
+                    disabled={feishuSyncing}
+                  >
+                    {feishuSyncing ? "同步中..." : "全量同步"}
+                  </button>
+                </div>
+                {feishuStatus ? <p className="manage-empty">{feishuStatus}</p> : null}
+              </div>
               <div className="manage-section">
                 <h3>分类管理</h3>
                 {categories.length === 0 ? (
