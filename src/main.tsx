@@ -393,7 +393,7 @@ function App() {
       ...current,
       prompts: current.prompts.filter((item) => item.id !== prompt.id)
     });
-    removeFromFeishu(prompt.id);
+    removeFromFeishu(prompt);
     loadData();
   }
 
@@ -505,9 +505,9 @@ function App() {
     });
   }
 
-  function removeFromFeishu(promptId: string) {
+  function removeFromFeishu(prompt: Prompt) {
     if (!feishuConfig) return;
-    void deletePromptRecord(feishuConfig, promptId).catch((caught: unknown) => {
+    void deletePromptRecord(feishuConfig, prompt).catch((caught: unknown) => {
       setError(`本地已删除，但同步到飞书失败：${caught instanceof Error ? caught.message : String(caught)}`);
     });
   }
@@ -827,7 +827,7 @@ function App() {
               </button>
               <div className="manage-section">
                 <h3>飞书多维表格同步</h3>
-                <p>配置后，保存/删除提示词会自动同步到飞书表格留存（图片仅同步数量）。</p>
+                <p>配置后，保存/删除提示词会自动同步到飞书表格留存，图片作为附件上传。</p>
                 <label>
                   表格链接
                   <input
